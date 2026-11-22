@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font: 13px system-ui, sans-serif; width: 340px; margin: 12px; }
+  h1 { font-size: 14px; margin: 0 0 10px; }
+  label { display: block; margin: 8px 0 4px; font-weight: 600; }
+  select, textarea, button { width: 100%; box-sizing: border-box; font: inherit; }
+  select { padding: 5px; }
+  button { margin-top: 10px; padding: 7px; cursor: pointer; }
+  #fill { background: #1f6feb; color: #fff; border: 0; border-radius: 4px; font-weight: 600; }
+  #fill:disabled { opacity: .6; cursor: default; }
+  #status { margin-top: 10px; white-space: pre-wrap; max-height: 260px; overflow: auto; font-size: 12px; }
+  .err { color: #c00; }
+  details { margin-top: 12px; }
+  textarea { height: 260px; font: 11px ui-monospace, monospace; }
+  .row { display: flex; gap: 6px; } .row button { margin-top: 6px; }
+</style>
+</head>
+<body>
+  <h1>CHub Form Filler</h1>
+  <div>Create the submission and select its <b>Type</b>, then:</div>
+  <button id="fill">Fill form</button>
+  <div id="status"></div>
+  <details>
+    <summary>Settings (JSON)</summary>
+    <textarea id="cfg" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="save">Save</button>
+      <button id="reset">Reset to defaults</button>
+    </div>
+  </details>
+  <script src="popup.js"></script>
+</body>
+</html>
