@@ -1,8 +1,8 @@
-// CHub Form Filler v1.3.0 — runs in the page's MAIN world (needs window.tinymce).
+// CHub Form Filler v1.3.1 — runs in the page's MAIN world (needs window.tinymce).
 // Built against spa/libs/components/src/lib/fields (formly + ng-select + PrimeNG + TinyMCE).
 // Flow: user creates a submission and selects Type → extension fills the rest.
 (() => {
-  if (window.__chubFiller && window.__chubFiller.version === '1.3.0') return;
+  if (window.__chubFiller && window.__chubFiller.version === '1.3.1') return;
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const norm = (s) =>
@@ -396,16 +396,20 @@
   // practical-experience-field (not wrapped): Add creates inline rows; row fields are filled by the normal pass.
   // Rows are added AFTER the first fill pass (see fillScope): a row added while the first field saves are
   // still in flight is dropped when the form re-draws. Returns the number of rows added.
-  async function ensureInlineRows(root, report) {
-    const target = ctx.settings.practicalRows ?? ctx.settings.listRows ?? 2;
-    const tables = [...root.querySelectorAll('formly-form .form-table')].filter(
+  const inlineTarget = () => ctx.settings.practicalRows ?? ctx.settings.listRows ?? 2;
+  function inlineTables(root) {
+    return [...root.querySelectorAll('formly-form .form-table')].filter(
       (t) => visible(t) && !t.closest('.f') && (root !== document || !inModal(t)) &&
         t.querySelector('button.add-button-position, button.btn--border')
     );
+  }
+  const inlineRowCount = (t) => t.parentElement.querySelectorAll(':scope > .formly-group-table').length;
+
+  async function ensureInlineRows(root) {
+    const target = inlineTarget();
     let total = 0;
-    for (const t of tables) {
-      const host = t.parentElement;
-      const count = () => host.querySelectorAll(':scope > .formly-group-table').length;
+    for (const t of inlineTables(root)) {
+      const count = () => inlineRowCount(t);
       let added = 0;
       while (count() < target) {
         const btn = t.querySelector('button.add-button-position, button.btn--border');
@@ -415,8 +419,7 @@
         if (!(await waitFor(() => count() > n, 2000))) break;
         added++;
       }
-      if (added) report.filled.push(`Inline table (${added} row(s) added, fields filled below)`);
-      total += added;
+      total += added; // reported once, by the final recount in run()
     }
     return total;
   }
@@ -462,10 +465,14 @@
   async function fillField(w, label) {
     const s = ctx.settings;
     if ((s.skipLabels || []).some((x) => norm(x) === norm(label))) return ['skipped', 'in skipLabels'];
-    const ov = valueFor(label);
+    let ov = valueFor(label);
+    const d = detect(w);
+    // an array gives one value per occurrence of the label on the page (1st, 2nd, …); the last one repeats.
+    // Rich text is the exception: there an array is one paragraph per item.
+    // Fields in list popups and RFP Chronology rows have no page occurrence index, so they get the 1st entry.
+    if (Array.isArray(ov) && d.kind !== 'rte') ov = ov[Math.min(keyOf(w)?.idx ?? 0, ov.length - 1)];
     if (ov === 'skip') return ['skipped', 'override: skip'];
     if (s.onlyRequired && !isRequired(w)) return ['skipped', 'not required'];
-    const d = detect(w);
     const text = ov !== undefined ? template(ov, label) : template(s.textTemplate, label);
     let r;
     switch (d.kind) {
@@ -476,9 +483,8 @@
       case 'split': r = await fillSplit(w, ov ?? s.percentageSplitLeft ?? 60); break;
       case 'select': r = await fillSelect(d.el, ov !== undefined ? String(ov) : null); break;
       case 'date': {
-        // an array gives one value per occurrence of the label (1st, 2nd, …); the last one repeats
-        let v = Array.isArray(ov) ? ov[Math.min(keyOf(w)?.idx ?? 0, ov.length - 1)] : ov;
-        const m =/^\s*([+-]\d+)\s*\*\s*n\s*$/.exec(String(v ?? ''));
+        let v = ov;
+        const m = /^\s*([+-]\d+)\s*\*\s*n\s*$/.exec(String(v ?? ''));
         if (m) {
           const k = keyOf(w);
           v = String(Number(m[1]) * ((k ? k.idx : 0) + 1));
@@ -567,16 +573,34 @@
         else await sleep(300);
       }
     };
+    // new = an element not seen yet whose label#occurrence wasn't handled (a re-drawn copy of a filled field isn't new)
+    const isNew = (w) => {
+      if (done.has(w)) return false;
+      const k = keyOf(w);
+      return !k || !doneKeys.has(`${norm(k.label)}#${k.idx}`);
+    };
+    // The page can be quiet while the form template is still downloading (no DOM changes during the network wait),
+    // so keep polling for a while and fill any field wrappers that appear.
+    const pollLate = async (ms) => {
+      const end = Date.now() + ms;
+      while (Date.now() < end) {
+        if (wrappers(document).some(isNew)) {
+          await waitIdle(600, 5000);
+          await passes();
+        } else await sleep(250);
+      }
+    };
     await passes();
     if (!quiet) {
-      // The form body can render after the header (slow template load): scan again once the page is quiet.
-      if (root === document) { await waitIdle(1500, 15000); await passes(); }
+      // The form body can render after the header (slow template load): scan again once the page is quiet,
+      // then poll up to 8 s for fields that render even later.
+      if (root === document) { await waitIdle(1500, 15000); await passes(); await pollLate(8000); }
       // Inline rows (Practical Experience) are added only after the form has been quiet for a while: a save response
       // arriving shortly after a fill re-draws the form and drops a row added in the meantime. After another quiet
       // period the loop checks that the row survived, and adds + refills it if not (max 3 attempts).
       for (let attempt = 0; attempt < 3; attempt++) {
         if (root === document) await waitIdle(2500, 20000);
-        const added = await ensureInlineRows(root, report);
+        const added = await ensureInlineRows(root);
         if (!added) break;
         for (const w of wrappers(root)) {
           if (!w.closest('lib-practical-experience-table-form')) continue;
@@ -612,7 +636,22 @@
 
   let ctx;
 
+  // One run per tab: the popup can be reopened (Alt+Shift+F) while a run is still going.
+  // The flag lives on window so a re-injected copy of the same version sees it too; a page reload clears it.
   async function run(cfg) {
+    const busy = window.__chubFillerBusy;
+    if (busy) {
+      return { error: `A fill is already running on this tab (started ${new Date(busy.since).toLocaleTimeString()}). Wait for its report, or reload the page.` };
+    }
+    window.__chubFillerBusy = { since: Date.now() };
+    try {
+      return await runOnce(cfg);
+    } finally {
+      window.__chubFillerBusy = null;
+    }
+  }
+
+  async function runOnce(cfg) {
     const settings = cfg.settings || {};
     ctx = {
       cfg, settings, type: null, overwrite: !!settings.overwrite,
@@ -639,7 +678,8 @@
     if (sw) ctx.structural.push(sw);
     const ngs = sw?.querySelector('ng-select');
     if (ngs) {
-      const ov = valueFor(settings.subtypeLabel);
+      let ov = valueFor(settings.subtypeLabel);
+      if (Array.isArray(ov)) ov = ov[0]; // only one Subtype field
       if (ov !== 'skip') {
         const r = await fillSelect(ngs, ov ? String(ov) : null);
         if (r === true) {
@@ -689,6 +729,13 @@
         report.filled.push(`${l.label} (list: ${n} row(s))`);
       }
     }
+    // Practical Experience: a re-draw after the last check can still drop rows, so count them once more.
+    for (const t of inlineTables(root)) {
+      const n = inlineRowCount(t);
+      const want = inlineTarget();
+      if (n < want) report.failed.push(`Practical Experience (${n} of ${want} row(s) after final check)`);
+      else report.filled.push(`Practical Experience (${n} row(s) after final check)`);
+    }
     for (const k of Object.keys(pre)) report[k] = pre[k].concat(report[k]);
     report.type = typeText;
     report.scope = root === document ? 'page' : 'popup';
@@ -696,5 +743,5 @@
     return report;
   }
 
-  window.__chubFiller = { run, version: '1.3.0' };
+  window.__chubFiller = { run, version: '1.3.1' };
 })();

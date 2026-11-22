@@ -6,7 +6,7 @@ const LOREM = [
 ];
 
 const DEFAULT_CFG = {
-  version: '1.3.0',
+  version: '1.3.1',
   settings: {
     typeLabel: 'Type',
     subtypeLabel: 'Subtype',
@@ -40,17 +40,70 @@ const DEFAULT_CFG = {
   overrides: {
     '*': { Subject: 'QA {type} {stamp}' },
     'Internal Transfer Requests': { 'Employment ID': 'EMP{n6}' },
-    // Practical Experience rows: two non-overlapping ~7-month periods (about 1 year 2 months in total).
+    // Practical Experience rows: two non-overlapping periods of 230 and 250 days (~7.5 + ~8 months).
+    // The app counts whole calendar months, which gives 7m + 8m = 1y 3m in total.
     // A list gives one value per occurrence of the label: 1st row, 2nd row.
-    'New Hire Requests': { From: ['-450', '-230'], To: ['-240', '-20'] }
+    'New Hire Requests': { From: ['-520', '-270'], To: ['-290', '-20'] }
   }
 };
 
-const $ = (id) => document.getElementById(id);
+// Old default values that are replaced by the current defaults when the saved values are still exactly the old ones.
+// Each entry is all-or-nothing (From/To belong together): if the user changed any of them, all are kept.
+const MIGRATIONS = [
+  {
+    parent: ['overrides', 'New Hire Requests'],
+    old: { From: ['-450', '-230'], To: ['-240', '-20'] }
+  }
+];
 
+const $ = (id) => document.getElementById(id);
+const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const clone = (v) => JSON.parse(JSON.stringify(v));
+
+// Adds keys that exist in the defaults but not in the saved config (nested objects too). Saved values always win;
+// arrays are not merged (the saved array replaces the default). Returns the paths of the added keys.
+function addMissing(saved, defaults, path = [], added = []) {
+  for (const k of Object.keys(defaults)) {
+    if (k === 'version') continue;
+    if (!(k in saved)) {
+      saved[k] = clone(defaults[k]);
+      added.push(path.concat(k).join(' › '));
+    } else if (isObj(saved[k]) && isObj(defaults[k])) {
+      addMissing(saved[k], defaults[k], path.concat(k), added);
+    }
+  }
+  return added;
+}
+
+function migrate(saved) {
+  const changed = [];
+  const at = (root, path) => path.reduce((o, k) => (isObj(o) ? o[k] : undefined), root);
+  for (const m of MIGRATIONS) {
+    const parent = at(saved, m.parent);
+    const keys = Object.keys(m.old);
+    if (!isObj(parent) || !keys.every((k) => JSON.stringify(parent[k]) === JSON.stringify(m.old[k]))) continue;
+    const def = at(DEFAULT_CFG, m.parent);
+    for (const k of keys) parent[k] = clone(def[k]);
+    changed.push(keys.map((k) => m.parent.concat(k).join(' › ')).join(', '));
+  }
+  return changed;
+}
+
+// Returns { cfg, notice }. Saved settings from an older version get the new default keys merged in (and old
+// default values migrated); the result is saved back so this happens once.
 async function loadCfg() {
   const { cfg } = await chrome.storage.local.get('cfg');
-  return cfg || DEFAULT_CFG;
+  if (!isObj(cfg)) return { cfg: clone(DEFAULT_CFG), notice: '' };
+  if (cfg.version === DEFAULT_CFG.version) return { cfg, notice: '' };
+  const from = cfg.version || 'an older version';
+  const added = addMissing(cfg, DEFAULT_CFG);
+  const migrated = migrate(cfg);
+  cfg.version = DEFAULT_CFG.version;
+  await chrome.storage.local.set({ cfg });
+  const lines = [`Saved settings updated from ${from} to ${DEFAULT_CFG.version}. Your own values were kept.`];
+  if (added.length) lines.push('Added defaults: ' + added.join(', '));
+  if (migrated.length) lines.push('Updated old default values: ' + migrated.join(', '));
+  return { cfg, notice: lines.join('\n') };
 }
 
 function show(text, isErr) {
@@ -70,7 +123,7 @@ function formatReport(r) {
 }
 
 async function fill() {
-  const cfg = await loadCfg();
+  const { cfg } = await loadCfg();
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   $('fill').disabled = true;
   show('Filling… keep this popup open.');
@@ -94,10 +147,8 @@ async function fill() {
 }
 
 async function init() {
-  const cfg = await loadCfg();
-  if (cfg.version !== DEFAULT_CFG.version) {
-    show(`Saved settings are from an older version. Click "Reset to defaults" in Settings to get the ${DEFAULT_CFG.version} defaults (re-add your own overrides after).`, true);
-  }
+  const { cfg, notice } = await loadCfg();
+  if (notice) show(notice);
   $('cfg').value = JSON.stringify(cfg, null, 2);
   $('fill').onclick = fill;
   $('save').onclick = async () => {

@@ -2,7 +2,7 @@
 
 From the static code review of v1.3.0 (2026-11-21). Items marked [inferred] are not yet confirmed in the live app.
 
-## v1.3.1 — to fix
+## Done in v1.3.1 (2026-11-22, not yet tested on chub-dev)
 1. **No guard against two runs at once.** Alt+Shift+F can reopen the popup mid-run and start a second `run()` on the same form; overlapping fill loops corrupted test results before. Fix: `run()` returns an "already running" error while a run is active (clear the flag in `finally`). [inferred: that the shortcut reopens the popup mid-run]
 2. **Late-rendering form body: the 1.3.0 fix is weak.** `waitIdle(1500)` + rescan can finish while the form template is still downloading (no DOM changes during the network wait), so the body still gets missed. Fix: after the main passes, poll for up to ~8 s for new field wrappers and fill any that appear. [inferred; reproduce with DevTools network throttling]
 3. **Practical Experience rows not recounted at the end.** A re-draw after the retry loop's last check drops the rows while the report still says "2 row(s) added". Fix: final recount; report a failure if fewer than `practicalRows`.
@@ -11,7 +11,7 @@ From the static code review of v1.3.0 (2026-11-21). Items marked [inferred] are 
 6. **Array overrides only work for dates.** For text/dropdown, `["a","b"]` becomes "a,b". Either support per-occurrence arrays for every kind or document "dates only" in the README.
 
 ## Minor
-7. Report counts can be inflated: when a Practical Experience row is re-added, the "Inline table" line and the row's fields are reported again. README "Filled" numbers count fill actions, not unique fields.
+7. Report counts can be inflated: when a Practical Experience row is re-added, the row's fields are reported again (the per-attempt "Inline table" line was replaced in 1.3.1 by one final "Practical Experience (N row(s) after final check)" line). README "Filled" numbers count fill actions, not unique fields.
 8. `{nN}` only supports 1–9 digits (`{n10}` stays literal). README says "any digit count works": fix the wording or the regex.
 9. Label rule `(\bno\.?|\bnumber)$` could match a Yes/No dropdown whose label ends in "…or No" → "option not found". [inferred: no such label seen yet]
 

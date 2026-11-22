@@ -1,4 +1,4 @@
-# CHub Form Filler (QA) — v1.3.0
+# CHub Form Filler (QA) — v1.3.1
 
 Fills CommitteeHub submission forms with test data for manual testing. Works in Edge and Brave, in normal and private windows.
 
@@ -9,20 +9,20 @@ Fills CommitteeHub submission forms with test data for manual testing. Works in 
 4. For private windows, open **Details** and turn on **Allow in InPrivate** (Edge) or **Allow in Private** (Brave).
 5. Optional: pin the extension. Shortcut: **Alt+Shift+F**.
 
-**To update:** unzip the new version over the same folder, then click the reload icon on the extension card in each browser. Then open the popup, go to Settings and click **Reset to defaults** (the saved 1.2.x settings don't have `practicalRows` or the New Hire date overrides). Re-add your own overrides after.
+**To update:** unzip the new version over the same folder, then click the reload icon on the extension card in each browser. Reload open CHub tabs too. No reset needed: from 1.3.1, the first time the popup opens it adds any new default settings to your saved settings and keeps your own values. The popup lists what it added. Old default New Hire dates (`From`/`To` still exactly as 1.3.0 shipped them) are replaced with the new ones; dates you changed are kept. A default key you delete yourself stays deleted until the next version upgrade adds it back; to turn a default off, set it to `"skip"`.
 
 ## Use
 1. Create a new submission and select its **Type** yourself.
-2. Wait until the form has loaded, open the extension and click **Fill form**. Keep the popup open until the report appears.
+2. Wait until the form has loaded, open the extension and click **Fill form**. Keep the popup open until the report appears. If you click **Fill form** again while a fill is still running on that tab, the popup says so and doesn't start a second one.
 
 The extension:
 - Reads the Type from the form and never changes it. Type-specific overrides use that Type text.
 - Fills **Subtype** if it's empty and confirms CHub's popup. A Subtype change resets the form data.
 - Never touches **Business Unit** (`skipLabels`), because changing it also resets the form data.
-- Fills every other visible field, in up to 3 passes so fields that appear after an answer are filled too. When the page goes quiet it scans once more, in case the form body rendered after the header.
+- Fills every other visible field, in up to 3 passes so fields that appear after an answer are filled too. When the page goes quiet it scans once more, then keeps watching for up to 8 seconds and fills any fields that appear, in case the form body rendered after the header (this adds up to 8 s to every run).
 - At the end, re-checks every field it filled and re-fills, once, any value the app dropped while re-drawing the form after a save. The report lists these under "Re-filled".
 - **List fields** (bidders, suppliers, savings summary, renewal/variation history…): clicks Add, fills the popup, and clicks Save, until the list has `listRows` rows (default 2). One row is accepted when a second can't be added. If Save stays disabled, it reports the invalid popup fields and cancels.
-- **Practical Experience** (New Hire): adds `practicalRows` inline rows (default 2) and fills them. The rows are added only after the form has been quiet for a while and re-checked afterwards, because a row added while saves are still in flight is dropped when the form re-draws. New Hire dates: row 1 = 450 → 240 days ago, row 2 = 230 → 20 days ago (about 6 months each, 1 year in total as the app shows it).
+- **Practical Experience** (New Hire): adds `practicalRows` inline rows (default 2) and fills them. The rows are added only after the form has been quiet for a while and re-checked afterwards, because a row added while saves are still in flight is dropped when the form re-draws. At the very end it counts the rows again and reports "Practical Experience (N of 2 row(s) after final check)" under Failed if a late re-draw dropped one. New Hire dates: row 1 = 520 → 290 days ago (230 days), row 2 = 270 → 20 days ago (250 days). If the app counts whole calendar months, as the 1.3.0 results suggest, that is 7m + 8m = 1y 3m in total (not yet confirmed on chub-dev).
 - **RFP Chronology**: fills each row's date and remarks.
 - **File uploads** (attachments, New Hire photo) are skipped and shown as "file upload (not supported)" under Skipped.
 - Never clicks Route and never uploads files.
@@ -57,7 +57,8 @@ The extension:
 - `overrides`: values per field label, for every type (`"*"`) or for one type only. They win over `labelRules`; type-specific beats `"*"`.
   - Text, textarea, rich text: the value. A list of strings for rich text gives one paragraph per item. Placeholders: `{label}` `{type}` `{stamp}` `{n7}` (random 7-digit number, never starting with 0; any digit count works).
   - Dropdown: the option text to pick, also used as the search term for API-backed and user-search fields.
-  - Date: `today`, `first`, `dd/mm/yyyy`, `+N` / `-N` (days from today), or `+N*n` (N × the occurrence number of that label). **New in 1.3.0:** a list, e.g. `["-450", "-230"]`, gives one value per occurrence of the label (1st, 2nd, …); the last value repeats. Checkbox: `true`/`false`. Radio: the option text. `"skip"` leaves the field untouched.
+  - Date: `today`, `first`, `dd/mm/yyyy`, `+N` / `-N` (days from today), or `+N*n` (N × the occurrence number of that label). Checkbox: `true`/`false`. Radio: the option text. `"skip"` leaves the field untouched.
+  - **A list gives one value per occurrence of the label** (1st, 2nd, …; the last value repeats), for every field kind except rich text, where a list is one paragraph per item. Example: `"From": ["-520", "-270"]`, or `"Remarks": ["First", "skip"]` to fill only the 1st Remarks. Up to 1.3.0 this worked for dates only. Fields inside list popups and RFP Chronology rows always get the 1st value.
 - `listRows`: rows to add to list fields. `practicalRows` (new): rows to add to the Practical Experience table (falls back to `listRows`). `overwrite`: refill fields that already have a value. `onlyRequired`: fill only ★ fields. `pick`: `first` or `random`. `delayMs`: pause between fields.
 - `typeLabel`, `subtypeLabel`, `skipLabels`: labels as shown in the UI. Change these when testing in Arabic.
 
@@ -72,6 +73,9 @@ Attachments, the New Hire photo, and other file uploads.
 - Changing the Type on a draft that already has data wipes the data at a moment the page doesn't show. Fill right after selecting the Type on a new submission, not after switching Type on a filled one.
 
 ## Test results (chub-dev, 2026-11-20)
+**v1.3.1 has not been tested on chub-dev yet.** The results below are from v1.2.9 (PC) and v1.3.0 (HR).
+
+
 **PC (v1.2.9):** all 9 types (Award Recommendation, Contract Renewal, Contract Termination, Contract Extension, Sourcing Strategy, Tender Cancellation, Contract Variation, Contract Administrator Change, Other), every fillable field saved after a page reload.
 
 **HR (v1.3.0), signed in as HR secretary.** Each row is a new submission: select the Type, run the filler, leave the form and reopen it, compare every field by position.
@@ -102,7 +106,7 @@ Attachments, the New Hire photo, and other file uploads.
 - Reference fields ("… No."): 7-digit numbers, no text.
 - Lists: 2 rows wanted, 1 row acceptable.
 - Date of Birth: typed 15/06/1990.
-- New Hire: skip the photo; Practical Experience = 2 rows of about 6 months each (1 year in total).
+- New Hire: skip the photo; Practical Experience = 2 rows, total at least 1 year plus a couple of months (1.3.1 dates aim for 1y 3m).
 - The 403 on rich text starting with "(" (company network) and the "Procurement reference details could not be found" toast (integration) are expected. Don't report them.
 
 **App quirks learned (don't rediscover):**
