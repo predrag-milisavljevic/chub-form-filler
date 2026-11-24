@@ -6,7 +6,7 @@ const LOREM = [
 ];
 
 const DEFAULT_CFG = {
-  version: '1.3.3',
+  version: '1.3.4',
   settings: {
     typeLabel: 'Type',
     subtypeLabel: 'Subtype',

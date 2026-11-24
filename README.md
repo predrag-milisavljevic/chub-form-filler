@@ -1,4 +1,4 @@
-# CHub Form Filler (QA) — v1.3.3
+# CHub Form Filler (QA) — v1.3.4
 
 Fills CommitteeHub submission forms with test data for manual testing. Works in Edge and Brave, in normal and private windows.
 
@@ -46,7 +46,7 @@ The extension:
 | Number | 5 (kept within min/max) |
 | Decimal | 1,000.00 (typed as digits, the currency mask handles the format) |
 | Percentage split | left 60 (the right side is calculated) |
-| Date | today, or the nearest enabled day; typed if the calendar doesn't open |
+| Date | today, typed in like the explicit dates (1.3.4; before that the calendar's "today" cell was clicked). If the field rejects it (past-only or future-only pickers), the nearest enabled day is clicked in the calendar |
 | Time | 10:00 |
 | Dropdown / Yes-No / Radio | first option |
 | Checkbox | ticked |
@@ -82,6 +82,13 @@ Attachments, the New Hire photo, and other file uploads.
 - Disabled or calculated fields (Shortfall, Duration, % To Original, Total Duration, …) are skipped; their values come from the fields they depend on.
 - Changing the Type on a draft that already has data wipes the data at a moment the page doesn't show. Fill right after selecting the Type on a new submission, not after switching Type on a filled one.
 - The badge sits over the top-right of the page header (search / help icons) while it is shown.
+
+## Test results v1.3.4 (chub-dev, 2026-11-24, partial)
+v1.3.4 types today's date into date fields instead of clicking the calendar's "today" cell (to fix BACKLOG #11). Run in the page (not the installed extension), byte-identical to the local file (SHA-256). Only External Transfer and Internal Secondment were run, each on a fresh draft, and checked in the open form 4 s after the run (all fillable fields), **without reopening**:
+- **12 valid runs: 11 clean, 1 failed.** The failure: External Transfer 100571, Date Of Appointment empty, run reported 0 failed. The calendar was not involved in the clean runs (it never opened in the traced run), so the typed path was used and accepted. Valid clean runs: 100574–100583 and 100585.
+- Not counted: 100570, 100584 and 100586 (my test script failed to select the Type, no fill started). From about 14:50 the dev server answered saves with 504/500 and took 10–20 s per save; runs 100581–100583 took 64–68 s and 100585 took 145 s. They were clean anyway, but they are not normal conditions.
+- **No evidence that it fixes #11.** If the failure rate were the earlier ~20% (3 failures in about 15 runs of these two types), seeing 0 or 1 failures in 12 runs would happen about 27% of the time. So it is not shown to help, and not shown to be worse. No failing run was traced, so the cause is still unknown.
+- Types other than these two were not run on 1.3.4. The change only touches date fields that have no value in the settings and no label rule.
 
 ## Test results v1.3.3 (chub-dev, 2026-11-24, HR only)
 Same method as the earlier results below: HR secretary in Claude's built-in browser, `filler.js` run in the page (not the installed extension; the popup/toolbar path is not covered), each type on a fresh submission, reload the submission from the server, compare every field by position. The page copy was the pushed v1.3.2 plus the 1.3.3 changes, checked byte-for-byte (SHA-256) against the local file; the only later edit is the `lateScanMs` default 3000 → 2000, which the test settings passed explicitly. PC types were not run.

@@ -1,8 +1,8 @@
-// CHub Form Filler v1.3.3 — runs in the page's MAIN world (needs window.tinymce).
+// CHub Form Filler v1.3.4 — runs in the page's MAIN world (needs window.tinymce).
 // Built against spa/libs/components/src/lib/fields (formly + ng-select + PrimeNG + TinyMCE).
 // Flow: user creates a submission and selects Type → extension fills the rest.
 (() => {
-  if (window.__chubFiller && window.__chubFiller.version === '1.3.3') return;
+  if (window.__chubFiller && window.__chubFiller.version === '1.3.4') return;
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const norm = (s) =>
@@ -289,8 +289,9 @@
   const ddmmyyyy = (d) =>
     `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 
-  // value: undefined/'today' → today (or nearest enabled day), 'first' → first enabled day,
-  // '+N' / '-N' → today ± N days (typed), 'dd/mm/yyyy' → typed (date-field commits typed dates on blur).
+  // value: undefined/'today' → today (typed; nearest enabled day by calendar if the field rejects it),
+  // 'first' → first enabled day (calendar), '+N' / '-N' → today ± N days (typed),
+  // 'dd/mm/yyyy' → typed (date-field commits typed dates on blur).
   async function fillDate(pd, value) {
     const input = pd.querySelector('input');
     if (!input || input.disabled) return 'disabled';
@@ -299,6 +300,13 @@
       const d = new Date();
       d.setDate(d.getDate() + Number(String(value).trim()));
       value = ddmmyyyy(d);
+    }
+    if (value === undefined || String(value).trim().toLowerCase() === 'today') {
+      // Typing is the path that has never lost a value in testing (Date Of Birth, New Hire From/To, End Date). Clicking
+      // the calendar's "today" cell was the only path where Date Of Appointment ended up empty (BACKLOG #11).
+      const r = await fillDate(pd, ddmmyyyy(new Date()));
+      if (r !== 'typed date not accepted') return r;
+      value = undefined; // today was rejected (e.g. past-only / future-only picker): click the nearest enabled day below
     }
 
     if (value && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(value))) {
@@ -855,5 +863,5 @@
     return report;
   }
 
-  window.__chubFiller = { run, version: '1.3.3' };
+  window.__chubFiller = { run, version: '1.3.4' };
 })();
