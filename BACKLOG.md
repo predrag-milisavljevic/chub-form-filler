@@ -15,10 +15,13 @@ From the static code review of v1.3.0 (2026-11-21). Items marked [inferred] are 
 8. `{nN}` only supports 1–9 digits (`{n10}` stays literal). README says "any digit count works": fix the wording or the regex.
 9. Label rule `(\bno\.?|\bnumber)$` could match a Yes/No dropdown whose label ends in "…or No" → "option not found". [inferred: no such label seen yet]
 
+## v1.3.2 — to fix
+11. **A value dropped after the final re-check goes unreported.** v1.3.1 run on Internal Secondment (draft 100487, 2026-11-24): Date Of Appointment was reported filled, was empty 3 s after the run ended and after reopen; report said 0 failed. A repeat on a fresh draft (100488) passed, so it's intermittent [source: test run]. Likely a save re-draw arriving after the `stillFilled` check [inferred]. Fix idea: after the re-fill step, wait for another quiet period and re-check once more; report anything still empty as failed.
+
 ## Test infrastructure
 10. Playwright regression script: launch Chromium with the unpacked extension (persistent context, `--load-extension`), log in to chub-dev from env vars, run each type on a fresh submission per the pass criteria in CLAUDE.md, print a pass table. HR and PC need separate accounts.
 
 ## Open (not code)
 - Brave and private windows: not tested by Pedja.
 - Sourcing Strategy "Select field" stays disabled; what unlocks it is unknown. Low priority.
-- Delete QA test drafts on chub-dev: 100438 upward, incl. 100460–100473 from the HR runs.
+- Delete QA test drafts on chub-dev: 100438 upward, incl. 100460–100473 from the HR runs and 100483–100493 from the v1.3.1 HR run.

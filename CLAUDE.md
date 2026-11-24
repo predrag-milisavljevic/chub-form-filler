@@ -22,7 +22,7 @@ Browser extension (Manifest V3, Edge/Brave) that fills CommitteeHUB submission f
 - Reference fields ("… No." / "… Number"): random 7-digit number, no text.
 - List fields (bidders, suppliers, …): 2 rows wanted, 1 row acceptable.
 - Date of Birth: typed 15/06/1990.
-- New Hire: skip the photo. Practical Experience = 2 rows; the total should show **at least 1 year plus a couple of months** (v1.3.0 gave 6m + 6m = "1y"; v1.3.1 uses 230 + 250 days, expected 7m + 8m = 1y 3m, not yet confirmed on chub-dev).
+- New Hire: skip the photo. Practical Experience = 2 rows; the total should show **at least 1 year plus a couple of months** (v1.3.0 gave 6m + 6m = "1y"; v1.3.1 uses 230 + 250 days, shows 7m + 8m = 1y 3m, confirmed on chub-dev 2026-11-24).
 - Expected noise, don't report: the 403 on rich text starting with "(", and the "Procurement reference details could not be found" toast (integration).
 
 ## App quirks (don't rediscover)

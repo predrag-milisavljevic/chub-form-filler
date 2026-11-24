@@ -22,7 +22,7 @@ The extension:
 - Fills every other visible field, in up to 3 passes so fields that appear after an answer are filled too. When the page goes quiet it scans once more, then keeps watching for up to 8 seconds and fills any fields that appear, in case the form body rendered after the header (this adds up to 8 s to every run).
 - At the end, re-checks every field it filled and re-fills, once, any value the app dropped while re-drawing the form after a save. The report lists these under "Re-filled".
 - **List fields** (bidders, suppliers, savings summary, renewal/variation history…): clicks Add, fills the popup, and clicks Save, until the list has `listRows` rows (default 2). One row is accepted when a second can't be added. If Save stays disabled, it reports the invalid popup fields and cancels.
-- **Practical Experience** (New Hire): adds `practicalRows` inline rows (default 2) and fills them. The rows are added only after the form has been quiet for a while and re-checked afterwards, because a row added while saves are still in flight is dropped when the form re-draws. At the very end it counts the rows again and reports "Practical Experience (N of 2 row(s) after final check)" under Failed if a late re-draw dropped one. New Hire dates: row 1 = 520 → 290 days ago (230 days), row 2 = 270 → 20 days ago (250 days). If the app counts whole calendar months, as the 1.3.0 results suggest, that is 7m + 8m = 1y 3m in total (not yet confirmed on chub-dev).
+- **Practical Experience** (New Hire): adds `practicalRows` inline rows (default 2) and fills them. The rows are added only after the form has been quiet for a while and re-checked afterwards, because a row added while saves are still in flight is dropped when the form re-draws. At the very end it counts the rows again and reports "Practical Experience (N of 2 row(s) after final check)" under Failed if a late re-draw dropped one. New Hire dates: row 1 = 520 → 290 days ago (230 days), row 2 = 270 → 20 days ago (250 days). The app shows 7m + 8m = 1y 3m in total (chub-dev, 2026-11-24).
 - **RFP Chronology**: fills each row's date and remarks.
 - **File uploads** (attachments, New Hire photo) are skipped and shown as "file upload (not supported)" under Skipped.
 - Never clicks Route and never uploads files.
@@ -72,8 +72,31 @@ Attachments, the New Hire photo, and other file uploads.
 - Disabled or calculated fields (Shortfall, Duration, % To Original, Total Duration, …) are skipped; their values come from the fields they depend on.
 - Changing the Type on a draft that already has data wipes the data at a moment the page doesn't show. Fill right after selecting the Type on a new submission, not after switching Type on a filled one.
 
+## Test results v1.3.1 (chub-dev, 2026-11-24, HR only)
+Signed in as HR secretary in Claude's built-in browser. `filler.js` and `DEFAULT_CFG` were loaded from commit `4b777a3` and run in the page (the unpacked extension itself was not installed; the popup's toolbar click path is not covered). Each row is a new submission: select the Type, run the filler, leave the form, reload the submission from the server, compare every field by position. PC types were not run (they need the PC secretary account).
+
+| # | Type | Draft | Filled | Skipped | Failed | Lost after reopen | Empty after reopen | Result |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Promotion Requests | 100484 | 1 | 4 | 0 | 0 | 0 | pass |
+| 2 | Termination/Contract Non-Renewal Requests | 100485 | 1 | 4 | 0 | 0 | 0 | pass |
+| 3 | Internal Transfer Requests | 100486 | 16 | 5 | 0 | 0 | 0 | pass |
+| 4 | New Hire Requests | 100483 | 32 | 9 | 0 | 0 | 0 | pass |
+| 5a | Internal Secondment Requests | 100487 | 16 | 5 | 0 | 0 | **1** | **fail** |
+| 5b | Internal Secondment Requests (repeat) | 100488 | 16 | 5 | 0 | 0 | 0 | pass |
+| 6 | Termination/Restructuring Requests | 100489 | 1 | 4 | 0 | 0 | 0 | pass |
+| 7 | External Transfer Requests | 100490 | 17 | 5 | 0 | 0 | 0 | pass |
+| 8 | External Secondment Requests | 100491 | 15 | 5 | 0 | 0 | 0 | pass |
+| 9 | Deputization Requests | 100492 | 16 | 5 | 0 | 0 | 0 | pass |
+| 10 | Other | 100493 | 4 | 4 | 0 | 0 | 0 | pass |
+
+Tally: 10 types, 11 runs; 10 runs pass, 1 run fails (5a). By type: 9 of 10 passed on the first run; Internal Secondment passed on the repeat.
+- **5a:** Date Of Appointment (required date) was reported as filled, but was already empty 3 s after the run ended and stayed empty after reopen. The filler reported 0 failed, so its final re-check didn't see the drop. Re-running the filler on the same draft filled it and it was saved. The repeat on a fresh draft (5b) passed. Intermittent; see BACKLOG #11.
+- **New Hire:** 2 Practical Experience rows after reopen; rows show 7m and 8m, **Total Years Of Experience 1y 3m** (BACKLOG #5 confirmed). The report had one "Practical Experience (2 row(s) after final check)" line.
+- **Second run while one is running (BACKLOG #1):** calling `run()` again 3 s into the New Hire run returned "A fill is already running on this tab…"; the first run finished normally.
+- Not checked: the late-rendering form body under network throttling (#2), array overrides other than the New Hire dates (#6), the settings merge in a real browser profile (#4; checked in Node only).
+
 ## Test results (chub-dev, 2026-11-20)
-**v1.3.1 has not been tested on chub-dev yet.** The results below are from v1.2.9 (PC) and v1.3.0 (HR).
+Results from v1.2.9 (PC) and v1.3.0 (HR).
 
 
 **PC (v1.2.9):** all 9 types (Award Recommendation, Contract Renewal, Contract Termination, Contract Extension, Sourcing Strategy, Tender Cancellation, Contract Variation, Contract Administrator Change, Other), every fillable field saved after a page reload.
