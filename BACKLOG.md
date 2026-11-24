@@ -10,13 +10,21 @@ From the static code review of v1.3.0 (2026-11-21). Items marked [inferred] are 
 5. **New Hire dates show "1y", not 1y + a couple of months.** 450→240 and 230→20 days ago = 210 days per row; the app showed 6m per row and 1y in total (it seems to count whole calendar months [inferred]). Proposed: row 1 = `-520` → `-290`, row 2 = `-270` → `-20` (~7 + 8 months ≈ 1y 3m). Also fix the `popup.js` comment ("about 1 year 2 months") to match the result.
 6. **Array overrides only work for dates.** For text/dropdown, `["a","b"]` becomes "a,b". Either support per-occurrence arrays for every kind or document "dates only" in the README.
 
+## Done in v1.3.3 (2026-11-24, tested on chub-dev, HR only)
+12. **A fill carried on after the Type was changed and filled the new blank form** (reported by Pedja, screenshot). Cause: the run is not tied to the popup; closing the popup doesn't stop it, and the late-form watch fills any field that appears. Fix: the run records the submission and the Type at the start, checks them at every field and every wait, and stops with "Type changed during the fill (was X, now Y)"; also stops when the submission changes or the user clicks the badge; cancels "Add" popups it opened. [source: test run, Internal Secondment → New Hire switched 4 s into a run]
+13. **The run kept going ~10 s after the form looked filled.** Trimmed: late-form watch 8 s → `lateScanMs` (default 2 s), no Practical Experience wait on forms without that table, one re-check instead of three quiet periods, shorter quiet periods. Run time: 384 s → 254 s over the 10 HR types (about a third), see the README. The remaining tail is 4.5–6 s (8 s on New Hire, where the 2.5 s quiet periods around the Practical Experience rows stay on purpose).
+14. **No sign of when a run is finished.** A status badge in the page corner: blue while running (click to stop), green when done, red when something failed, amber when stopped.
+
 ## Minor
 7. Report counts can be inflated: when a Practical Experience row is re-added, the row's fields are reported again (the per-attempt "Inline table" line was replaced in 1.3.1 by one final "Practical Experience (N row(s) after final check)" line). README "Filled" numbers count fill actions, not unique fields.
 8. `{nN}` only supports 1–9 digits (`{n10}` stays literal). README says "any digit count works": fix the wording or the regex.
 9. Label rule `(\bno\.?|\bnumber)$` could match a Yes/No dropdown whose label ends in "…or No" → "option not found". [inferred: no such label seen yet]
 
 ## Open bug
-11. **Date Of Appointment (Internal Secondment) is sometimes empty after a run, and the report says 0 failed. NOT fixed.**
+11. **Date Of Appointment (Internal Secondment, External Transfer) is sometimes empty after a run, and the report says 0 failed. NOT fixed.**
+    - v1.3.3: External Transfer draft 100563 failed the same way (the open form showed the field empty 3 s after the run, empty after reopen; green badge "0 failed"). So it is not limited to Internal Secondment. 11 other v1.3.3 runs on HR types were clean, including 2 runs of types that have this field [source: test run, 2026-11-24].
+    - **Pattern [source: code reading + test runs]:** all 3 failures (100487, 100498, 100563) are Date Of Appointment, the only date field without an override or label rule, so it is filled by clicking the calendar's "today" cell. The dates filled by typing (Date Of Birth, New Hire From/To, End Date) never failed in any run. The calendar path returns "filled" right after the click without checking the field (the typed path checks that the input kept the value). Whether that is the cause is [inferred].
+    - **Proposed fix (not done):** for the default "today", type today's date like the other dates (calendar click only as fallback when the field rejects it, e.g. past-only pickers). It needs ≥15 runs on Internal Secondment / External Transfer to say anything, since it failed about 3 times in 15–20 runs.
     - v1.3.1: draft 100487 failed (empty 3 s after the run ended and after reopen); the repeat 100488 passed [source: test run, 2026-11-24].
     - v1.3.2 (re-checks twice after quiet periods, then once more at the end; anything still empty goes under Failed): 9 runs on fresh drafts (100495–100503), 8 clean and **1 failed (100498)**, same symptom, report said 0 failed [source: test run, 2026-11-24]. Two other runs (100496, 100500) lost the rich text "Human Resources Department Recommendation" and the 1.3.2 re-check recovered it ("Re-filled" in the report).
     - Traced runs (100499–100503) show the date being wiped by a save re-draw about 0.5 s after it is set, then back a few seconds later [source: DOM trace]. That can be the form re-rendering from its model, not a lost value [inferred]. No trace of a failing run exists yet.
@@ -30,4 +38,4 @@ From the static code review of v1.3.0 (2026-11-21). Items marked [inferred] are 
 ## Open (not code)
 - Brave and private windows: not tested by Pedja.
 - Sourcing Strategy "Select field" stays disabled; what unlocks it is unknown. Low priority.
-- Delete QA test drafts on chub-dev: 100438 upward, incl. 100460–100473 from the HR runs and 100483–100493 from the v1.3.1 HR run, and 100495–100504 from the v1.3.2 runs (100494 isn't ours).
+- Delete QA test drafts on chub-dev: 100438 upward, incl. 100460–100473 from the HR runs and 100483–100493 from the v1.3.1 HR run, 100495–100504 from the v1.3.2 runs (100494 isn't ours), and 100555–100569 from the v1.3.3 runs (draft 100558 was left with the Type-change popup cancelled).

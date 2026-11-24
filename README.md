@@ -1,4 +1,4 @@
-# CHub Form Filler (QA) — v1.3.2
+# CHub Form Filler (QA) — v1.3.3
 
 Fills CommitteeHub submission forms with test data for manual testing. Works in Edge and Brave, in normal and private windows.
 
@@ -13,14 +13,24 @@ Fills CommitteeHub submission forms with test data for manual testing. Works in 
 
 ## Use
 1. Create a new submission and select its **Type** yourself.
-2. Wait until the form has loaded, open the extension and click **Fill form**. Keep the popup open until the report appears. If you click **Fill form** again while a fill is still running on that tab, the popup says so and doesn't start a second one.
+2. Wait until the form has loaded, open the extension and click **Fill form**. If you click it again while a fill is still running on that tab, the popup says so and doesn't start a second one.
+3. Watch the **badge in the top-right corner of the page** (new in 1.3.3). It is there even if you close the popup:
+   - **Blue** "filling…": the run is going. Click it to stop the run.
+   - **Green** "done: N filled · 0 failed": the run is finished (pulses, then fades after 8 s).
+   - **Red** "done: N filled · M failed (field names)": finished, but something needs a look. Stays until you click it.
+   - **Amber** "stopped: …": the run ended early (see below). Stays until you click it.
+
+   The badge is added to the page after the run starts and is only changed when the run ends; it is not part of the app's form.
+
+**The run stops by itself** (new in 1.3.3) if the **Type** changes, or you leave the submission, while it is running. It then reports what it had filled so far and cancels any "Add" popup it opened. Before 1.3.3, changing the Type during a fill let the run carry on and fill the new, blank form. The app asks "All form data and attachments will be erased" when you change the Type; the filler stops as soon as the new Type is selected, before you answer that popup.
 
 The extension:
 - Reads the Type from the form and never changes it. Type-specific overrides use that Type text.
 - Fills **Subtype** if it's empty and confirms CHub's popup. A Subtype change resets the form data.
 - Never touches **Business Unit** (`skipLabels`), because changing it also resets the form data.
-- Fills every other visible field, in up to 3 passes so fields that appear after an answer are filled too. When the page goes quiet it scans once more, then keeps watching for up to 8 seconds and fills any fields that appear, in case the form body rendered after the header (this adds up to 8 s to every run).
-- At the end, re-checks every field it filled, in two rounds after quiet periods, and re-fills any value the app dropped while re-drawing the form after a save. The report lists these under "Re-filled". After a last quiet period it checks once more; a value that is still empty then is reported under Failed. **Known issue:** in 1 of 9 test runs, Date Of Appointment (Internal Secondment) was empty after the run and the report still said 0 failed (BACKLOG #11). After filling Internal Secondment, check that field or click Fill again.
+- Fills every other visible field, in up to 3 passes so fields that appear after an answer are filled too. When the page goes quiet it scans once more, then keeps watching for `lateScanMs` (default 2 s; it was 8 s in 1.3.1–1.3.2) and fills any fields that appear, in case the form body rendered after the header. On a slow network set `lateScanMs` to 8000; set 0 to switch this off.
+- At the end, after one quiet period, re-checks every field it filled and re-fills any value the app dropped while re-drawing the form after a save. The report lists these under "Re-filled". A value that is still empty after the re-fill is reported under Failed. A field that can't be found at that moment (form mid re-draw) is waited for up to 1.5 s before it is judged. **Known issue:** Date Of Appointment (Internal Secondment, External Transfer) is sometimes empty after the run while the report says 0 failed (BACKLOG #11). After filling those types, check that field or click Fill again.
+- Forms without a Practical Experience table skip the extra waiting that table needs (1.3.3).
 - **List fields** (bidders, suppliers, savings summary, renewal/variation history…): clicks Add, fills the popup, and clicks Save, until the list has `listRows` rows (default 2). One row is accepted when a second can't be added. If Save stays disabled, it reports the invalid popup fields and cancels.
 - **Practical Experience** (New Hire): adds `practicalRows` inline rows (default 2) and fills them. The rows are added only after the form has been quiet for a while and re-checked afterwards, because a row added while saves are still in flight is dropped when the form re-draws. At the very end it counts the rows again and reports "Practical Experience (N of 2 row(s) after final check)" under Failed if a late re-draw dropped one. New Hire dates: row 1 = 520 → 290 days ago (230 days), row 2 = 270 → 20 days ago (250 days). The app shows 7m + 8m = 1y 3m in total (chub-dev, 2026-11-24).
 - **RFP Chronology**: fills each row's date and remarks.
@@ -59,7 +69,7 @@ The extension:
   - Dropdown: the option text to pick, also used as the search term for API-backed and user-search fields.
   - Date: `today`, `first`, `dd/mm/yyyy`, `+N` / `-N` (days from today), or `+N*n` (N × the occurrence number of that label). Checkbox: `true`/`false`. Radio: the option text. `"skip"` leaves the field untouched.
   - **A list gives one value per occurrence of the label** (1st, 2nd, …; the last value repeats), for every field kind except rich text, where a list is one paragraph per item. Example: `"From": ["-520", "-270"]`, or `"Remarks": ["First", "skip"]` to fill only the 1st Remarks. Up to 1.3.0 this worked for dates only. Fields inside list popups and RFP Chronology rows always get the 1st value.
-- `listRows`: rows to add to list fields. `practicalRows` (new): rows to add to the Practical Experience table (falls back to `listRows`). `overwrite`: refill fields that already have a value. `onlyRequired`: fill only ★ fields. `pick`: `first` or `random`. `delayMs`: pause between fields.
+- `listRows`: rows to add to list fields. `practicalRows`: rows to add to the Practical Experience table (falls back to `listRows`). `lateScanMs` (new in 1.3.3, default 2000): how long to keep watching for late-rendering fields after the first scans. `overwrite`: refill fields that already have a value. `onlyRequired`: fill only ★ fields. `pick`: `first` or `random`. `delayMs`: pause between fields.
 - `typeLabel`, `subtypeLabel`, `skipLabels`: labels as shown in the UI. Change these when testing in Arabic.
 
 Settings are shared between normal and private windows. They are not synced between browsers: copy and paste the JSON to move them.
@@ -71,6 +81,50 @@ Attachments, the New Hire photo, and other file uploads.
 - The company network rejects rich text that starts with "(" (403), and the app then silently reverts the field. The filler never starts a rich text line with "(".
 - Disabled or calculated fields (Shortfall, Duration, % To Original, Total Duration, …) are skipped; their values come from the fields they depend on.
 - Changing the Type on a draft that already has data wipes the data at a moment the page doesn't show. Fill right after selecting the Type on a new submission, not after switching Type on a filled one.
+- The badge sits over the top-right of the page header (search / help icons) while it is shown.
+
+## Test results v1.3.3 (chub-dev, 2026-11-24, HR only)
+Same method as the earlier results below: HR secretary in Claude's built-in browser, `filler.js` run in the page (not the installed extension; the popup/toolbar path is not covered), each type on a fresh submission, reload the submission from the server, compare every field by position. The page copy was the pushed v1.3.2 plus the 1.3.3 changes, checked byte-for-byte (SHA-256) against the local file; the only later edit is the `lateScanMs` default 3000 → 2000, which the test settings passed explicitly. PC types were not run.
+
+| # | Type | Draft | Filled | Skipped | Failed | Lost after reopen | Empty after reopen | Result |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Promotion Requests | 100560 | 1 | 4 | 0 | 0 | 0 | pass |
+| 2 | Termination/Contract Non-Renewal Requests | 100561 | 1 | 4 | 0 | 0 | 0 | pass |
+| 3 | Internal Transfer Requests | 100562 | 16 | 5 | 0 | 0 | 0 | pass |
+| 4 | New Hire Requests | 100559 | 32 | 9 | 0 | 0 | 0 | pass |
+| 5 | Internal Secondment Requests | 100556 | 16 | 5 | 0 | 0 | 0 | pass |
+| 6 | Termination/Restructuring Requests | 100566 | 1 | 4 | 0 | 0 | 0 | pass |
+| 7 | External Transfer Requests | 100563 | 17 | 5 | 0 | 0 | **1** | **fail** |
+| 8 | External Secondment Requests | 100564 | 15 | 5 | 0 | 0 | 0 | pass |
+| 9 | Deputization Requests | 100565 | 16 | 5 | 0 | 0 | 0 | pass |
+| 10 | Other | 100567 | 4 | 4 | 0 | 0 | 0 | pass |
+
+Tally: 10 types; 9 pass, 1 fails (7). Repeats with `lateScanMs` 2000: Internal Transfer 100568 and Other 100569, both pass. That makes 12 reopened runs: 11 pass, 1 fail.
+- **Failure (7):** Date Of Appointment was empty 3 s after the run and after reopen; the run counted it as filled and the green badge said "0 failed". Same bug as BACKLOG #11, now seen on a third run and a second type. **Not fixed.**
+- **New Hire:** 2 Practical Experience rows after reopen, total Years Of Experience 1y 3m.
+- **Type change during a run:** Internal Secondment (100558): switching the Type to New Hire about 4 s into the run stopped it at once: amber badge "stopped: Type changed during the fill (was Internal Secondment Requests, now New Hire Requests). 6 field(s) were filled before that", lock released. I cancelled the app's confirmation popup afterwards.
+- **Click to stop:** clicking the blue badge stopped a run ("you clicked the banner", 6 fields filled), and clicking the amber badge dismissed it.
+- **Badge:** blue while running, green on finish (seen in screenshots), 12 runs showed "done … 0 failed" including run 7, where the date was in fact missing. Red (failures) was not triggered by any run.
+- **Settings upgrade (Node test, not in a browser profile):** a saved 1.3.2 config gets `lateScanMs` added, your own values are kept.
+- **Not tested:** the popup's new "STOPPED" text, the badge inside the installed extension, the PC types.
+
+**Run time** (seconds from clicking Fill until 3 s after the run ended, same method in both columns; the "before" values are the v1.3.1 runs of the same day (not shown in the tables below), Internal Secondment is the average of the 9 v1.3.2 runs):
+
+| Type | before | 1.3.3 |
+|---|---|---|
+| Promotion | 19 | 10 |
+| Termination/Contract Non-Renewal | 18 | 10 |
+| Internal Transfer | 42 | 28 |
+| New Hire | 62 | 54 |
+| Internal Secondment | 48 | 32 |
+| External Transfer | 42 | 34 |
+| External Secondment | 48 | 30 |
+| Deputization | 49 | 32 |
+| Termination/Restructuring | 18 | 9 |
+| Other | 38 | 15 |
+| Sum | 384 | 254 |
+
+Faster by 8–23 s per run, about a third overall. After the form stops changing, the run keeps going for 4.5–6 s (8 s on New Hire), measured from the last visible value change to the end. I didn't measure that on the old versions. New Hire keeps its longer tail on purpose: the 2.5 s quiet period before and after adding Practical Experience rows is what stops late saves from dropping them.
 
 ## Test results v1.3.2 (chub-dev, 2026-11-24, HR only, partial)
 Same method as below (`filler.js` v1.3.2 and its default settings run in the page; the byte-identical file was checked by SHA-256 against the local one). Only two types were run:

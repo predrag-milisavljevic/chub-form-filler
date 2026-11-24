@@ -6,7 +6,7 @@ const LOREM = [
 ];
 
 const DEFAULT_CFG = {
-  version: '1.3.2',
+  version: '1.3.3',
   settings: {
     typeLabel: 'Type',
     subtypeLabel: 'Subtype',
@@ -19,6 +19,7 @@ const DEFAULT_CFG = {
     searchTerm: 'a',
     listRows: 2,
     practicalRows: 2,
+    lateScanMs: 2000,
     textTemplate: 'QA {label} {stamp}',
     textareaTemplate: 'QA test text for {label} ({type}) {stamp}',
     rteTemplate: LOREM,
@@ -114,6 +115,7 @@ function show(text, isErr) {
 function formatReport(r) {
   const sec = (title, arr) => (arr.length ? `${title} (${arr.length}):\n  ${arr.join('\n  ')}\n` : '');
   return (
+    (r.stopped ? `STOPPED: ${r.stopped}. Below is what was done before that.\n\n` : '') +
     `Type: ${r.type}   (scope: ${r.scope})\n` +
     `Filled ${r.filled.length} · Skipped ${r.skipped.length} · Failed ${r.failed.length} · Unsupported ${r.unsupported.length}\n\n` +
     sec('Failed', r.failed) + sec('Unsupported (fill manually)', r.unsupported) +
@@ -126,7 +128,7 @@ async function fill() {
   const { cfg } = await loadCfg();
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   $('fill').disabled = true;
-  show('Filling… keep this popup open.');
+  show('Filling… a blue badge in the page corner shows the run (click it to stop). It turns green when finished; you can close this popup.');
   try {
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['filler.js'], world: 'MAIN' });
     const [res] = await chrome.scripting.executeScript({
@@ -138,7 +140,7 @@ async function fill() {
     const r = res?.result;
     if (!r) show('No result returned. Check the page console ([CHub Form Filler]).', true);
     else if (r.error) show(r.error, true);
-    else show(formatReport(r));
+    else show(formatReport(r), !!r.stopped);
   } catch (e) {
     show('Error: ' + e.message, true);
   } finally {

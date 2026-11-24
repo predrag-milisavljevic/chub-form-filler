@@ -1,8 +1,8 @@
-// CHub Form Filler v1.3.2 — runs in the page's MAIN world (needs window.tinymce).
+// CHub Form Filler v1.3.3 — runs in the page's MAIN world (needs window.tinymce).
 // Built against spa/libs/components/src/lib/fields (formly + ng-select + PrimeNG + TinyMCE).
 // Flow: user creates a submission and selects Type → extension fills the rest.
 (() => {
-  if (window.__chubFiller && window.__chubFiller.version === '1.3.2') return;
+  if (window.__chubFiller && window.__chubFiller.version === '1.3.3') return;
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const norm = (s) =>
@@ -28,6 +28,7 @@
     const t0 = Date.now();
     try {
       while (Date.now() - t0 < timeout) {
+        checkStop(); // every long wait is also a point where a Type change / click on the banner stops the run
         const busy = !!document.querySelector('lib-loader .loader');
         if (!busy && Date.now() - last >= quietMs) return true;
         await sleep(100);
@@ -48,6 +49,67 @@
     el.dispatchEvent(new FocusEvent('blur'));
     el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
   };
+
+  // ---------- stop conditions & on-page status banner ----------
+  class StopRun extends Error {}
+  const submissionId = () => (location.hash.match(/submissions\/([^/?#]+)/) || [])[1] || '';
+  // Throws StopRun when the user clicked the banner, the submission changed, or the Type was changed.
+  // Changing the Type on a filled draft re-draws the form; carrying on would fill a form of another type.
+  function checkStop() {
+    if (!ctx) return;
+    if (ctx.abort) throw new StopRun(ctx.abort);
+    if (submissionId() !== ctx.subId) throw new StopRun('the submission changed during the fill');
+    if (ctx.pageScope) {
+      const now = findByLabel(document, ctx.settings.typeLabel)?.querySelector('.ng-value')?.textContent?.trim() || '';
+      if (now && now !== ctx.type) throw new StopRun(`Type changed during the fill (was ${ctx.type}, now ${now})`);
+    }
+  }
+
+  // A small badge in the top-right corner of the page, appended to <body> (outside the app's forms): blue while the
+  // run is going (click = stop), green when finished (fades after 8 s), red/amber when something needs attention
+  // (stays until clicked). It is created at the start and changed only after the run, so it can't disturb the
+  // "page is quiet" checks that run in between.
+  const BANNER_COLORS = { running: '#1f6feb', done: '#1a7f37', problem: '#cf222e', stopped: '#bf8700' };
+  function banner(state, text) {
+    try {
+      clearTimeout(window.__chubBannerTimer);
+      let b = document.getElementById('__chubFillerBanner');
+      if (!b) {
+        if (!document.getElementById('__chubFillerStyle')) {
+          const st = document.createElement('style');
+          st.id = '__chubFillerStyle';
+          st.textContent = '@keyframes __chubPulse{0%{transform:scale(1)}35%{transform:scale(1.1)}100%{transform:scale(1)}}';
+          document.head.appendChild(st);
+        }
+        b = document.createElement('div');
+        b.id = '__chubFillerBanner';
+        b.setAttribute('role', 'status');
+        document.body.appendChild(b);
+      }
+      b.style.cssText =
+        'position:fixed;top:12px;right:12px;z-index:2147483647;max-width:440px;padding:10px 16px;border-radius:8px;' +
+        'font:600 14px/1.35 system-ui,sans-serif;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.35);cursor:pointer;' +
+        `background:${BANNER_COLORS[state]};` + (state === 'running' ? '' : 'animation:__chubPulse .5s ease-out 3;');
+      b.textContent = text;
+      b.onclick = () => {
+        if (state === 'running') { if (ctx && window.__chubFillerBusy) ctx.abort = 'you clicked the banner'; }
+        else b.remove();
+      };
+      if (state === 'done') window.__chubBannerTimer = setTimeout(() => b.remove(), 8000);
+    } catch (_) { /* the banner is only a convenience */ }
+  }
+  function showResult(r) {
+    if (!r) return;
+    if (r.error) return banner('stopped', `CHub Form Filler: ${r.error}`);
+    if (r.stopped) return banner('stopped', `CHub Form Filler stopped: ${r.stopped}. ${r.filled.length} field(s) were filled before that. Click to dismiss.`);
+    const nf = r.failed.length;
+    const manual = r.unsupported.length ? ` · ${r.unsupported.length} to fill manually` : '';
+    if (nf) {
+      const names = r.failed.slice(0, 3).map((f) => f.replace(/ \(.*$/, '')).join(', ') + (nf > 3 ? ', …' : '');
+      return banner('problem', `CHub Form Filler done: ${r.filled.length} filled · ${nf} failed (${names})${manual}. Click to dismiss.`);
+    }
+    banner('done', `CHub Form Filler done: ${r.filled.length} filled · 0 failed${manual}`);
+  }
 
   // ---------- scope & discovery ----------
   const openModals = () =>
@@ -361,6 +423,7 @@
     // attempt-based: the row can render late (re-draw after save), so don't block on seeing it
     const attempts = Math.max(0, target - rows());
     for (let a = 0; a < attempts; a++) {
+      checkStop();
       const btn = addBtn();
       if (!btn || btn.disabled) { notes.push('Add button not available'); break; }
       const before = new Set(openModals());
@@ -412,6 +475,7 @@
       const count = () => inlineRowCount(t);
       let added = 0;
       while (count() < target) {
+        checkStop();
         const btn = t.querySelector('button.add-button-position, button.btn--border');
         if (!btn || btn.disabled) break;
         const n = count();
@@ -463,6 +527,7 @@
   }
 
   async function fillField(w, label) {
+    checkStop();
     const s = ctx.settings;
     if ((s.skipLabels || []).some((x) => norm(x) === norm(label))) return ['skipped', 'in skipLabels'];
     let ov = valueFor(label);
@@ -534,6 +599,7 @@
   async function fillScope(root, prefix, quiet) {
     const s = ctx.settings;
     const report = { filled: [], skipped: [], failed: [], unsupported: [] };
+    if (root === document && !quiet) ctx.pageReport = report; // what a stopped run reports
     const tag = (l) => (prefix ? `${prefix} › ${l}` : l);
     const done = new Set(ctx.structural || []);
     const doneKeys = new Set(); // page scope: the form is re-drawn after list saves, so track label#occurrence too
@@ -565,6 +631,7 @@
             if (ks && pass < 2 && (status === 'failed' || /re-drawn/.test(info || ''))) { doneKeys.delete(ks); continue; }
             report[status].push(info ? `${tag(label)} (${info})` : tag(label));
           } catch (e) {
+            if (e instanceof StopRun) throw e;
             report.failed.push(`${tag(label)} (${e.message})`);
           }
           await sleep(s.delayMs ?? 150);
@@ -584,6 +651,7 @@
     const pollLate = async (ms) => {
       const end = Date.now() + ms;
       while (Date.now() < end) {
+        checkStop();
         if (wrappers(document).some(isNew)) {
           await waitIdle(600, 5000);
           await passes();
@@ -593,12 +661,14 @@
     await passes();
     if (!quiet) {
       // The form body can render after the header (slow template load): scan again once the page is quiet,
-      // then poll up to 8 s for fields that render even later.
-      if (root === document) { await waitIdle(1500, 15000); await passes(); await pollLate(8000); }
+      // then keep watching for lateScanMs (default 2 s) for fields that render even later.
+      if (root === document) { await waitIdle(800, 15000); await passes(); await pollLate(s.lateScanMs ?? 2000); }
       // Inline rows (Practical Experience) are added only after the form has been quiet for a while: a save response
       // arriving shortly after a fill re-draws the form and drops a row added in the meantime. After another quiet
       // period the loop checks that the row survived, and adds + refills it if not (max 3 attempts).
+      // Forms without such a table skip all of this waiting.
       for (let attempt = 0; attempt < 3; attempt++) {
+        if (!inlineTables(root).length) break;
         if (root === document) await waitIdle(2500, 20000);
         const added = await ensureInlineRows(root);
         if (!added) break;
@@ -610,7 +680,7 @@
         }
         await waitIdle(800);
         await passes(); // fill the new row's fields
-        if (root === document) await waitIdle(2500, 20000);
+        // no wait here: the next attempt starts with the same quiet period before it re-counts the rows
       }
     }
     return report;
@@ -634,6 +704,14 @@
     }
   }
 
+  // stillFilled() is null while the field's wrapper isn't in the DOM (form mid-redraw): wait briefly for it to come
+  // back before judging, so a re-draw at the wrong moment isn't read as "can't tell".
+  async function settled(k, ms = 1500) {
+    let v = stillFilled(k);
+    for (let t = 0; v === null && t < ms; t += 150) { await sleep(150); v = stillFilled(k); }
+    return v;
+  }
+
   let ctx;
 
   // One run per tab: the popup can be reopened (Alt+Shift+F) while a run is still going.
@@ -644,17 +722,42 @@
       return { error: `A fill is already running on this tab (started ${new Date(busy.since).toLocaleTimeString()}). Wait for its report, or reload the page.` };
     }
     window.__chubFillerBusy = { since: Date.now() };
+    banner('running', 'CHub Form Filler: filling… Click here to stop.');
+    let r = null;
     try {
-      return await runOnce(cfg);
+      r = await runOnce(cfg);
+      return r;
+    } catch (e) {
+      r = { error: `error: ${e?.message || e}` };
+      throw e;
     } finally {
       window.__chubFillerBusy = null;
+      showResult(r);
     }
   }
 
+  // Runs the fill; a StopRun (Type or submission changed, banner clicked) ends it early with what was done so far.
   async function runOnce(cfg) {
+    try {
+      return await runBody(cfg);
+    } catch (e) {
+      if (!(e instanceof StopRun)) throw e;
+      if (ctx.pageScope) {
+        // popups opened by this run (list "Add") are cancelled, never saved half-filled
+        for (const m of openModals()) m.querySelector('.modal__footer .btn--blank')?.click();
+      }
+      const partial = ctx.pageReport || { filled: [], skipped: [], failed: [], unsupported: [] };
+      const r = { type: ctx.type, scope: ctx.pageScope ? 'page' : 'popup', stopped: e.message };
+      for (const k of ['filled', 'skipped', 'failed', 'unsupported']) r[k] = (ctx.pre?.[k] || []).concat(partial[k]);
+      console.info('[CHub Form Filler] stopped:', r);
+      return r;
+    }
+  }
+
+  async function runBody(cfg) {
     const settings = cfg.settings || {};
     ctx = {
-      cfg, settings, type: null, overwrite: !!settings.overwrite,
+      cfg, settings, type: null, overwrite: !!settings.overwrite, subId: submissionId(),
       stamp: new Date().toISOString().slice(5, 16).replace('T', ' '),
     };
 
@@ -664,6 +767,7 @@
     if (root === document && !document.querySelector('formly-form')) {
       return { error: 'No CHub form found on this page. Create a submission and select its Type first.' };
     }
+    ctx.pageScope = root === document;
 
     // 1) Type — selected by the user; read it, never change it.
     const tw = findByLabel(root, settings.typeLabel);
@@ -672,6 +776,7 @@
     ctx.type = typeText;
     ctx.structural = [tw];
     const pre = { filled: [], skipped: [], failed: [], unsupported: [] };
+    ctx.pre = pre;
 
     // 2) Subtype — structural: may show a confirmation popup and reset form data.
     const sw = findByLabel(root, settings.subtypeLabel);
@@ -696,45 +801,35 @@
     ctx.verify = [];
     const report = await fillScope(root === document ? document : root, '', false);
     // Values the app reverted (a save rejected by the server, or a save response re-drawing the form) show up empty
-    // again, sometimes seconds after the run looked finished. Two rounds, each after a quiet period: find filled
-    // fields that are empty now and re-fill them. Then one last check after another quiet period: anything empty
-    // at that point is reported as failed, never hidden behind "0 failed".
-    const keyStr = (v) => `${norm(v.key.label)}#${v.key.idx}`;
+    // again after the run looked finished. After one quiet period, find filled fields that are empty now and
+    // re-fill them; a field that is still empty after the re-fill is reported as failed.
     const checks = () => {
       const m = new Map(); // re-fills add the same field to ctx.verify again
-      for (const v of ctx.verify) if (!m.has(keyStr(v))) m.set(keyStr(v), v);
+      for (const v of ctx.verify) { const ks = `${norm(v.key.label)}#${v.key.idx}`; if (!m.has(ks)) m.set(ks, v); }
       return [...m.values()];
     };
-    const refilled = new Set();
-    const gone = new Map(); // keyStr → { v, late }
-    for (let round = 0; round < 2; round++) {
-      if (root === document) await waitIdle(round ? 2500 : 1500, 15000);
-      const lost = checks().filter((v) => !gone.has(keyStr(v)) && stillFilled(v.key) === false);
-      if (!lost.length) continue;
+    if (root === document) await waitIdle(1000, 15000);
+    const lost = [];
+    for (const v of checks()) if ((await settled(v.key)) === false) lost.push(v);
+    const refilled = [];
+    if (lost.length) {
       ctx.overwrite = true;
       for (const v of lost) {
         const w = byKey(v.key);
-        if (w) { try { await fillField(w, v.label); } catch (_) {} }
-        await waitIdle(600);
+        if (w) { try { await fillField(w, v.label); } catch (e) { if (e instanceof StopRun) throw e; } }
+        await waitIdle(500);
       }
       ctx.overwrite = !!settings.overwrite;
-      await waitIdle(1500);
-      for (const v of lost) {
-        if (stillFilled(v.key) === false) gone.set(keyStr(v), { v, late: false });
-        else refilled.add(v.label);
-      }
+      await waitIdle(1000);
     }
-    if (root === document) await waitIdle(2000, 10000);
-    for (const v of checks()) {
-      if (!gone.has(keyStr(v)) && stillFilled(v.key) === false) gone.set(keyStr(v), { v, late: true });
+    for (const v of lost) {
+      if (stillFilled(v.key) === false) {
+        const i = report.filled.findIndex((f) => f.startsWith(v.label + ' ('));
+        if (i >= 0) report.filled.splice(i, 1);
+        report.failed.push(`${v.label} (${v.kind}: value lost after save, re-fill also lost)`);
+      } else refilled.push(v.label);
     }
-    for (const { v, late } of gone.values()) {
-      const i = report.filled.findIndex((f) => f.startsWith(v.label + ' ('));
-      if (i >= 0) report.filled.splice(i, 1);
-      report.failed.push(`${v.label} (${v.kind}: value lost after save, ${late ? 'found at the final check' : 're-fill also lost'})`);
-      refilled.delete(v.label);
-    }
-    if (refilled.size) report.refilled = [...refilled];
+    if (refilled.length) report.refilled = refilled;
     // list rows can appear several seconds after Save: re-count before reporting
     for (const l of ctx.lists || []) {
       const span = [...document.querySelectorAll('formly-form .regular-S-label.separator > span')]
@@ -760,5 +855,5 @@
     return report;
   }
 
-  window.__chubFiller = { run, version: '1.3.2' };
+  window.__chubFiller = { run, version: '1.3.3' };
 })();

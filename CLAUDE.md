@@ -1,6 +1,6 @@
 # CHub Form Filler — instructions for Claude Code
 
-Browser extension (Manifest V3, Edge/Brave) that fills CommitteeHUB submission forms with test data for manual QA. Owner: Pedja (QA Lead). Current version: **1.3.2**. Read `README.md` for user-facing behavior and `BACKLOG.md` for open work.
+Browser extension (Manifest V3, Edge/Brave) that fills CommitteeHUB submission forms with test data for manual QA. Owner: Pedja (QA Lead). Current version: **1.3.3**. Read `README.md` for user-facing behavior and `BACKLOG.md` for open work.
 
 ## Files
 - `manifest.json`: MV3 manifest; `version` must match the version string in `filler.js` and `popup.js`.
