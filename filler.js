@@ -1,8 +1,8 @@
-// CHub Form Filler v1.3.1 — runs in the page's MAIN world (needs window.tinymce).
+// CHub Form Filler v1.3.2 — runs in the page's MAIN world (needs window.tinymce).
 // Built against spa/libs/components/src/lib/fields (formly + ng-select + PrimeNG + TinyMCE).
 // Flow: user creates a submission and selects Type → extension fills the rest.
 (() => {
-  if (window.__chubFiller && window.__chubFiller.version === '1.3.1') return;
+  if (window.__chubFiller && window.__chubFiller.version === '1.3.2') return;
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const norm = (s) =>
@@ -695,12 +695,22 @@
     // 3) Everything else
     ctx.verify = [];
     const report = await fillScope(root === document ? document : root, '', false);
-    // values the app reverted (e.g. a save rejected by the server/WAF) show up empty again
-    if (root === document) await waitIdle(1500);
-    // a save response arriving mid-typing can reset a field: re-fill lost values once
-    const lost = ctx.verify.filter((v) => stillFilled(v.key) === false);
-    const refilled = [];
-    if (lost.length) {
+    // Values the app reverted (a save rejected by the server, or a save response re-drawing the form) show up empty
+    // again, sometimes seconds after the run looked finished. Two rounds, each after a quiet period: find filled
+    // fields that are empty now and re-fill them. Then one last check after another quiet period: anything empty
+    // at that point is reported as failed, never hidden behind "0 failed".
+    const keyStr = (v) => `${norm(v.key.label)}#${v.key.idx}`;
+    const checks = () => {
+      const m = new Map(); // re-fills add the same field to ctx.verify again
+      for (const v of ctx.verify) if (!m.has(keyStr(v))) m.set(keyStr(v), v);
+      return [...m.values()];
+    };
+    const refilled = new Set();
+    const gone = new Map(); // keyStr → { v, late }
+    for (let round = 0; round < 2; round++) {
+      if (root === document) await waitIdle(round ? 2500 : 1500, 15000);
+      const lost = checks().filter((v) => !gone.has(keyStr(v)) && stillFilled(v.key) === false);
+      if (!lost.length) continue;
       ctx.overwrite = true;
       for (const v of lost) {
         const w = byKey(v.key);
@@ -709,15 +719,22 @@
       }
       ctx.overwrite = !!settings.overwrite;
       await waitIdle(1500);
+      for (const v of lost) {
+        if (stillFilled(v.key) === false) gone.set(keyStr(v), { v, late: false });
+        else refilled.add(v.label);
+      }
     }
-    for (const v of lost) {
-      if (stillFilled(v.key) === false) {
-        const i = report.filled.findIndex((f) => f.startsWith(v.label + ' ('));
-        if (i >= 0) report.filled.splice(i, 1);
-        report.failed.push(`${v.label} (${v.kind}: value lost after save, re-fill also lost)`);
-      } else refilled.push(v.label);
+    if (root === document) await waitIdle(2000, 10000);
+    for (const v of checks()) {
+      if (!gone.has(keyStr(v)) && stillFilled(v.key) === false) gone.set(keyStr(v), { v, late: true });
     }
-    if (refilled.length) report.refilled = refilled;
+    for (const { v, late } of gone.values()) {
+      const i = report.filled.findIndex((f) => f.startsWith(v.label + ' ('));
+      if (i >= 0) report.filled.splice(i, 1);
+      report.failed.push(`${v.label} (${v.kind}: value lost after save, ${late ? 'found at the final check' : 're-fill also lost'})`);
+      refilled.delete(v.label);
+    }
+    if (refilled.size) report.refilled = [...refilled];
     // list rows can appear several seconds after Save: re-count before reporting
     for (const l of ctx.lists || []) {
       const span = [...document.querySelectorAll('formly-form .regular-S-label.separator > span')]
@@ -743,5 +760,5 @@
     return report;
   }
 
-  window.__chubFiller = { run, version: '1.3.1' };
+  window.__chubFiller = { run, version: '1.3.2' };
 })();

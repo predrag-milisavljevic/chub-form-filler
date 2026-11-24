@@ -15,8 +15,14 @@ From the static code review of v1.3.0 (2026-11-21). Items marked [inferred] are 
 8. `{nN}` only supports 1–9 digits (`{n10}` stays literal). README says "any digit count works": fix the wording or the regex.
 9. Label rule `(\bno\.?|\bnumber)$` could match a Yes/No dropdown whose label ends in "…or No" → "option not found". [inferred: no such label seen yet]
 
-## v1.3.2 — to fix
-11. **A value dropped after the final re-check goes unreported.** v1.3.1 run on Internal Secondment (draft 100487, 2026-11-24): Date Of Appointment was reported filled, was empty 3 s after the run ended and after reopen; report said 0 failed. A repeat on a fresh draft (100488) passed, so it's intermittent [source: test run]. Likely a save re-draw arriving after the `stillFilled` check [inferred]. Fix idea: after the re-fill step, wait for another quiet period and re-check once more; report anything still empty as failed.
+## Open bug
+11. **Date Of Appointment (Internal Secondment) is sometimes empty after a run, and the report says 0 failed. NOT fixed.**
+    - v1.3.1: draft 100487 failed (empty 3 s after the run ended and after reopen); the repeat 100488 passed [source: test run, 2026-11-24].
+    - v1.3.2 (re-checks twice after quiet periods, then once more at the end; anything still empty goes under Failed): 9 runs on fresh drafts (100495–100503), 8 clean and **1 failed (100498)**, same symptom, report said 0 failed [source: test run, 2026-11-24]. Two other runs (100496, 100500) lost the rich text "Human Resources Department Recommendation" and the 1.3.2 re-check recovered it ("Re-filled" in the report).
+    - Traced runs (100499–100503) show the date being wiped by a save re-draw about 0.5 s after it is set, then back a few seconds later [source: DOM trace]. That can be the form re-rendering from its model, not a lost value [inferred]. No trace of a failing run exists yet.
+    - Open question: why does the filler's final check not see the empty field in the failing run? Possibilities [inferred, none checked]: the field wrapper wasn't found at check time (`stillFilled` returns null, which counts as OK); the value was dropped after the last check; the typed date was shown in the input but never committed to the form model.
+    - Next step: reproduce with a trace that also logs what `stillFilled` returns for this field at each check.
+    - Workaround: click Fill again on that draft, or check Date Of Appointment by eye.
 
 ## Test infrastructure
 10. Playwright regression script: launch Chromium with the unpacked extension (persistent context, `--load-extension`), log in to chub-dev from env vars, run each type on a fresh submission per the pass criteria in CLAUDE.md, print a pass table. HR and PC need separate accounts.
@@ -24,4 +30,4 @@ From the static code review of v1.3.0 (2026-11-21). Items marked [inferred] are 
 ## Open (not code)
 - Brave and private windows: not tested by Pedja.
 - Sourcing Strategy "Select field" stays disabled; what unlocks it is unknown. Low priority.
-- Delete QA test drafts on chub-dev: 100438 upward, incl. 100460–100473 from the HR runs and 100483–100493 from the v1.3.1 HR run.
+- Delete QA test drafts on chub-dev: 100438 upward, incl. 100460–100473 from the HR runs and 100483–100493 from the v1.3.1 HR run, and 100495–100504 from the v1.3.2 runs (100494 isn't ours).

@@ -1,4 +1,4 @@
-# CHub Form Filler (QA) — v1.3.1
+# CHub Form Filler (QA) — v1.3.2
 
 Fills CommitteeHub submission forms with test data for manual testing. Works in Edge and Brave, in normal and private windows.
 
@@ -20,7 +20,7 @@ The extension:
 - Fills **Subtype** if it's empty and confirms CHub's popup. A Subtype change resets the form data.
 - Never touches **Business Unit** (`skipLabels`), because changing it also resets the form data.
 - Fills every other visible field, in up to 3 passes so fields that appear after an answer are filled too. When the page goes quiet it scans once more, then keeps watching for up to 8 seconds and fills any fields that appear, in case the form body rendered after the header (this adds up to 8 s to every run).
-- At the end, re-checks every field it filled and re-fills, once, any value the app dropped while re-drawing the form after a save. The report lists these under "Re-filled".
+- At the end, re-checks every field it filled, in two rounds after quiet periods, and re-fills any value the app dropped while re-drawing the form after a save. The report lists these under "Re-filled". After a last quiet period it checks once more; a value that is still empty then is reported under Failed. **Known issue:** in 1 of 9 test runs, Date Of Appointment (Internal Secondment) was empty after the run and the report still said 0 failed (BACKLOG #11). After filling Internal Secondment, check that field or click Fill again.
 - **List fields** (bidders, suppliers, savings summary, renewal/variation history…): clicks Add, fills the popup, and clicks Save, until the list has `listRows` rows (default 2). One row is accepted when a second can't be added. If Save stays disabled, it reports the invalid popup fields and cancels.
 - **Practical Experience** (New Hire): adds `practicalRows` inline rows (default 2) and fills them. The rows are added only after the form has been quiet for a while and re-checked afterwards, because a row added while saves are still in flight is dropped when the form re-draws. At the very end it counts the rows again and reports "Practical Experience (N of 2 row(s) after final check)" under Failed if a late re-draw dropped one. New Hire dates: row 1 = 520 → 290 days ago (230 days), row 2 = 270 → 20 days ago (250 days). The app shows 7m + 8m = 1y 3m in total (chub-dev, 2026-11-24).
 - **RFP Chronology**: fills each row's date and remarks.
@@ -71,6 +71,12 @@ Attachments, the New Hire photo, and other file uploads.
 - The company network rejects rich text that starts with "(" (403), and the app then silently reverts the field. The filler never starts a rich text line with "(".
 - Disabled or calculated fields (Shortfall, Duration, % To Original, Total Duration, …) are skipped; their values come from the fields they depend on.
 - Changing the Type on a draft that already has data wipes the data at a moment the page doesn't show. Fill right after selecting the Type on a new submission, not after switching Type on a filled one.
+
+## Test results v1.3.2 (chub-dev, 2026-11-24, HR only, partial)
+Same method as below (`filler.js` v1.3.2 and its default settings run in the page; the byte-identical file was checked by SHA-256 against the local one). Only two types were run:
+- **Internal Secondment Requests, 9 fresh drafts (100495–100503):** 8 clean, **1 failed (100498)**: Date Of Appointment empty 3 s after the run and after reopen, report said 0 failed. The first 7 runs (100495–100501) were reopened and compared: 6 had 0 failed, 0 lost, 0 empty; 100498 had 1 empty. The last 2 (100502, 100503) were only checked in the open form 5 s after the run, without reopening. Two runs (100496, 100500) re-filled a dropped rich text field. **Not fixed**, see BACKLOG #11.
+- **New Hire Requests (100504):** 32 filled, 9 skipped, 0 failed; after reopen 0 lost, 0 empty, 2 Practical Experience rows, total 1y 3m. Same as v1.3.1.
+- Not run on v1.3.2: the other 8 HR types and all PC types.
 
 ## Test results v1.3.1 (chub-dev, 2026-11-24, HR only)
 Signed in as HR secretary in Claude's built-in browser. `filler.js` and `DEFAULT_CFG` were loaded from commit `4b777a3` and run in the page (the unpacked extension itself was not installed; the popup's toolbar click path is not covered). Each row is a new submission: select the Type, run the filler, leave the form, reload the submission from the server, compare every field by position. PC types were not run (they need the PC secretary account).
